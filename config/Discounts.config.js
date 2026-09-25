@@ -10,7 +10,8 @@
 module.exports = {
     // Extraction query.
     sourceQuery:  `SELECT 
-                Descuento
+                Descuento,
+                Porcentaje
             FROM Descuento
         `,
 
@@ -18,7 +19,7 @@ module.exports = {
     // independent of Zoho's schema)
      sourceMap: {
         code: { source: 'Descuento' },
-        rate: { source: 'Descuento' }
+        rate: { source: 'Porcentaje', transform: (val) => Math.round(val * 1000000) / 1000000 },
     },
 
     zohoModule: 'discounts',     // destination module in Zoho CRM
@@ -32,7 +33,8 @@ module.exports = {
 
     destinationMap: {
         Name: { canonical: 'code' },             // Zoho requires "Name" as the display field
-        Codigo_ERP: { canonical: 'code' }     // key used for duplicate_check_fields
+        Codigo_ERP: { canonical: 'code' },    // key used for duplicate_check_fields
+        Percentage: { canonical: 'rate' },
        
     }
 };

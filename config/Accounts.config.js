@@ -60,6 +60,8 @@ module.exports = {
         { field: 'account_category', canonical: 'category', zohoModule: 'account_category' },
         { field: 'account_group', canonical: 'group', zohoModule: 'account_group' },
         { field: 'account_family', canonical: 'family', zohoModule: 'account_family' },
+        { field: 'discounts', canonical: 'discount', zohoModule: 'discounts' }, 
+
     ],
 
     // Non-standard lookup: Zoho Users indexed by "alias", not by Codigo_ERP
@@ -88,7 +90,7 @@ module.exports = {
         account_group: { canonical: 'group', lookup: true },
         account_family: { canonical: 'family', lookup: true },
         tax_regime: { canonical: 'taxRegime' },
-        discount_percentage: { canonical: 'discount' },
+        discounts: { canonical: 'discount', lookup: true },
         Owner: { canonical: 'agent', lookup: true },        // resolved via specialLookups
         ERP_Agent: { canonical: 'agent' },                  // raw value, no lookup
     }

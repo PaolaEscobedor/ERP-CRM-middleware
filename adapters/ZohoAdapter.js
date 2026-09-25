@@ -85,6 +85,23 @@ class ZohoAdapter {
 
 
     /**
+        * Builds a reverse lookup map: { zohoUserId: alias }
+        * Used to translate a Sales Order's record Owner into the
+        * Intelisis agent code (Alias), the inverse of fetchUsersMap().
+    */
+    async fetchUsersReverseMap() {
+        if (!this.headers) await this.initialize();
+
+            const map = {};
+            const response = await axios.get(`${this.apiDomain}/crm/v8/users`, { headers: this.headers });
+            (response.data?.users || []).forEach(user => {
+            if (user.alias) map[String(user.id)] = String(user.alias);
+        });
+        return map;
+    }
+
+
+    /**
      * Resolves all lookups declared in config.lookups (and any
      * config.specialLookups), returning a map of maps keyed by
      * destination field name.
@@ -110,14 +127,14 @@ class ZohoAdapter {
     }
 
 
-     /**
-     * Translates canonical records into Zoho payloads using
-     * config.destinationMap, then pushes them in batches of 100.
-     * @param {object[]} canonicalRecords
-     * @param {object} config
-     */
+    /**
+    * Translates canonical records into Zoho payloads using
+    * config.destinationMap, then pushes them in batches of 100.
+    * @param {object[]} canonicalRecords
+    * @param {object} config
+    */
 
-     async pushCanonical (canonicalRecords, config) {
+    async pushCanonical (canonicalRecords, config) {
         if(!this.headers) await this.initialize();
 
         const maps = await this._resolveLookups(config);
@@ -155,14 +172,128 @@ class ZohoAdapter {
                     syncedCount++;
                     console.log(`  Record ID: ${item.details.id} | Action: ${item.action}`);
                 }
-    });
+            });
             console.log(`Batch ${Math.floor(i / BATCH_SIZE) + 1} synced (${chunk.length} records) -> ${config.zohoModule}`);
         
 
         }
         return { syncedCount, errorCount, expectedCount: records.length };
     }
+
+
+
+    /** Functions required for the Zoho - ERP direction**/
+
+
+    /**
+    * Fetches a single record by ID from a Zoho module, with all its
+    * native fields (used to retrieve a Sales Order after Deluge sends
+    * only its record ID).
+    */
+
+    async getRecord(moduleAPIName, recordId) {
+        if(!this.headers) await this.initialize();
+
+        try{
+            const response= await axios.get(
+                `${this.apiDomain}/crm/v8/${moduleAPIName}/${recordId}`,
+                { headers: this.headers }
+            );
+            return response.data?.data?.[0] || null;
+        } catch (error) {
+            console.error(`Error fetching record ${recordId} from ${moduleAPIName}:`, error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+
+
+    /**
+    * Builds a reverse lookup map: { zohoRecordId: Codigo_ERP }
+    * Used when translating FROM Zoho (lookup fields return Zoho record
+    * IDs) TO Intelisis (the SP expects the original ERP code).
+    */
+
+    async fetchReverseMap(moduleAPIName, keyField='Codigo_ERP'){
+        if (!this.headers) await this.initialize();
+
+        const map={};
+        let page=1;
+        let hasMore= true;
+
+        while (hasMore){
+            try{
+                const response= await axios.get(
+                    `${this.apiDomain}/crm/v8/${moduleAPIName}?fields=id,${keyField}&page=${page}&per_page=200`,
+                    { headers: this.headers }
+                );
+                (response.data?.data || []).forEach((item) => {
+                    const code = item[keyField];
+                    if( code !== undefined && code !== null && code !== ''){
+                        map[String(item.id)]= String(code).trim();
+                    }
+                });
+                hasMore= !!response.data?.info?.more_records;
+                page ++;         
+            } catch (error){
+                console.warn('Error fetching reverse map for module ${moduleAPIName} on page ${page}:', error.message);
+                hasMore=false;
+            }
+        }
+
+        return map;
+    }
+
+
+    /**
+    * Translates a raw Zoho record into the Canonical Data Model (CDM)
+    * using config.sourceMap, resolving lookup fields (which come back
+    * as { id, name } objects) via config.reverseLookups.
+    */
+
+    async buildCanonicalFromZohoRecord(zohoRecord, config){
+
+        const reverseMaps= {};
+        await Promise.all((config.reverseLookups || []).map(async (rl) => {
+            reverseMaps[rl.field] = await this.fetchReverseMap(rl.zohoModule, rl.keyField);
+        }));
+
+        if (config.specialReverseLookups) {
+            await Promise.all(Object.entries(config.specialReverseLookups || []).map(async ([field, spec]) => {
+                if (spec.endpoint === 'users'){
+                    reverseMaps[field] = await this.fetchUsersReverseMap();
+                }
+            }));
+            
+        }   
+
+        const canonical= {};
+        for (const[canonicalField, mapping] of Object.entries(config.sourceMap)){
+            const rawValue= zohoRecord[mapping.zohoField];
+
+            if (reverseMaps[canonicalField]){
+                const zohoLookupID= rawValue?.id || rawValue;
+                canonical[canonicalField]= zohoLookupID ? (reverseMaps[canonicalField][String(zohoLookupID)] || mapping.defaultValue || null)
+                : (mapping.defaultValue || null);
+            } else if(mapping.transform) {
+                canonical[canonicalField] = mapping.transform(rawValue);
+            } else {
+                canonical[canonicalField]= rawValue ?? mapping.defaultValue ?? null;
+            }
+        }
+
+        return canonical;
+    
+    }
+
+
+
+
 }
+
+
+
+
 
 
 module.exports = ZohoAdapter;
