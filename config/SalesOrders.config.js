@@ -30,7 +30,7 @@ module.exports = {
 
     // Mapping Rules from Zoho CRM record (native API Names) to Canonical Data Model (CDM)
     sourceMap:{
-        user: {zohoField: 'sales_representative', defaultValue: 'DEMO' },
+        user:  { zohoField: '__unused__', defaultValue: 'DEMO' },
         company: {zohoField: 'Company', defaultValue: 'GRAL' },
         branch: { zohoField: 'operating_branch', 
                 transform: (val) => {
@@ -39,7 +39,7 @@ module.exports = {
                     return parseInt(code, 10) || 0;
                 }
         },
-        status: {zohoField: 'Status', defaultValue: 'SINAFECTAR' },
+        status: {zohoField: '__unused__', defaultValue: 'SINAFECTAR' },
         issueDate: { zohoField: 'creation_date' },
         customer: { zohoField: 'Account_Name' },  // lookup -> Accounts
         agent: { zohoField: 'Owner' },             // record owner, not a custom field -> Users (alias)
@@ -57,17 +57,26 @@ module.exports = {
 
         lineItems: {
             zohoField:'Ordered_Items',
-            transform: (items) => Array.isArray(items) ? items.map(item => ({
-                itemCode: item.Product_Name?.Product_Code ||  'DEFAULT',
-                quantity: parseFloat( item.Quantity) || 0.0, 
-                price: parseFloat(item.List_Price ) || 0.0,
-                unit: item.Unidad || 'pza',
-                discount: parseFloat(item.discount || item.Discount) || 0.0,
-                tax1: parseFloat(item.Tax) || 16.0,
-                tax2: null,
-                tax3: null
-            })) : []
+            transform: (items) => Array.isArray(items) ? items.map(item => {
+                    const lineTotal = parseFloat(item.Total) || 0;
+                    const lineDiscountAmount = parseFloat(item.Discount) || 0;
+                    return {
+                        itemCode: item.Product_Name?.Product_Code ||  'DEFAULT',
+                        quantity: parseFloat( item.Quantity) || 0.0, 
+                        price: parseFloat(item.List_Price ) || 0.0,
+                        unit: item.Unidad || 'pza',
+                        discount: lineTotal > 0 ? (lineDiscountAmount / lineTotal) * 100 : 0,
+                        tax1: parseFloat(item.Tax) || 16.0,
+                        tax2: null,
+                        tax3: null
+                    };  
+            }) : []
 
+        },
+
+        totalItems: {
+        zohoField: 'Ordered_Items',
+        transform: (items) => Array.isArray(items) ? items.length : 0
         }
     },
 
@@ -109,6 +118,21 @@ module.exports = {
         FormaEnvio: { canonical: 'shippingMethod', type: mssql.VarChar(50) },
         EnviarA: { canonical: 'accountBranch', type: mssql.VarChar(50) },
         TotalDet: { canonical: 'totalItems', type: mssql.Int }
+    },
+
+    // Destination Mapping: CDM line item -> pNetActualizarPedidoD parameters
+    // @ID is injected at runtime from the header result; @Renglon is omitted
+
+    detailSpParameters: {
+        Articulo: {canonical: 'itemCode', type: mssql.VarChar(20)}, 
+        Cantidad: { canonical: 'quantity', type: mssql.Float },
+        Precio: { canonical: 'price', type: mssql.Float},
+        Unidad: { canonical: 'unit', type: mssql.VarChar(50) },
+        DescuentoLinea: { canonical: 'discount', type: mssql.Float },
+        Impuesto1: { canonical: 'taax1', type: mssql.Float  },
+        Impuesto2: { canonical: 'tax2', type: mssql.Float },
+        Impuesto3: { canonical: 'tax3', type: mssql.Float },
+
     }
 };
 
