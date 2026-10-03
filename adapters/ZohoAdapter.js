@@ -276,7 +276,8 @@ class ZohoAdapter {
                 canonical[canonicalField]= zohoLookupID ? (reverseMaps[canonicalField][String(zohoLookupID)] || mapping.defaultValue || null)
                 : (mapping.defaultValue || null);
             } else if(mapping.transform) {
-                canonical[canonicalField] = mapping.transform(rawValue);
+                // Without zohoField, the transform receives the full record (to combine several fields)
+                canonical[canonicalField] = mapping.transform(mapping.zohoField ? rawValue : zohoRecord);
             } else {
                 canonical[canonicalField]= rawValue ?? mapping.defaultValue ?? null;
             }

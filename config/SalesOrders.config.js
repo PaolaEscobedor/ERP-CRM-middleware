@@ -43,7 +43,13 @@ module.exports = {
         issueDate: { zohoField: 'creation_date' },
         customer: { zohoField: 'Account_Name' },  // lookup -> Accounts
         agent: { zohoField: 'Owner' },             // record owner, not a custom field -> Users (alias)
-        reference: {zohoField: 'Reference'},
+        reference:{
+            transform: (record) => {
+            const folio = record.SO_Number || '';
+            const extra = record.Reference || '';
+            return [folio, extra].filter(Boolean).join(' - ').substring(0, 50);
+            }
+        },
         notes: {zohoField: 'Comments'},
         warehouse: { zohoField: 'warehouse' }, 
         priceList: { zohoField: 'price_list' },         // lookup -> Price_Books
@@ -54,6 +60,7 @@ module.exports = {
         currency: { zohoField: 'Moneda', defaultValue: 'Pesos' },
         exchangeRate: { zohoField: 'TipoCambio', transform: (val) => parseFloat(val) || 1.0 },
         shippingMethod: { zohoField: 'FormaEnvio' },
+        externalId: { zohoField: 'id' },
 
         lineItems: {
             zohoField:'Ordered_Items',
@@ -79,6 +86,15 @@ module.exports = {
         transform: (items) => Array.isArray(items) ? items.length : 0
         }
     },
+
+   // to identify in Database
+    idempotency: {
+    table: 'Venta',
+    column: 'FolioCRM',
+    canonical: 'externalId',
+    editableStatuses: ['SINAFECTAR', 'CONFIRMAR'],
+    },
+
 
     // Phase 3: Reverse lookups: Zoho record ID -> Intelisis code / numeric value
     reverseLookups: [
@@ -107,6 +123,7 @@ module.exports = {
         Cliente: { canonical: 'customer', type: mssql.VarChar(10) },
         Agente: { canonical: 'agent', type: mssql.VarChar(10) },
         Referencia: { canonical: 'reference', type: mssql.VarChar(50) },
+        FolioCRM: { canonical: 'externalId', type: mssql.VarChar(50) },
         Observaciones: { canonical: 'notes', type: mssql.VarChar(100) },
         Almacen: { canonical: 'warehouse', type: mssql.VarChar(10) },
         ListaPrecios: { canonical: 'priceList', type: mssql.VarChar(20) },

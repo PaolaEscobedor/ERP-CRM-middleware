@@ -37,51 +37,103 @@ class IntelisisAdapter {
         });
     }
 
-    /**
-     * Loads a set of SP parameters into an mssql request, coercing values
-     * to the declared SQL type (reverse-lookup values arrive as strings).
-     */
+    async _findExistingOrder( transaction, canonnicalRecord, config){
+        const {table, column, canonical}= config.idempotency;
+        const externalId= canonnicalRecord[canonical];
+        if(!externalId) return null;
 
-    _bindParameters(request, source, spParameters){
-        for (const [spParamName, mapping] of Object.entries(spParameters)){
-            let value= source[mapping.canonical];
+        const request= new mssql.Request(transaction);
+        request.input('externalId', mssql.VarChar(50), String(externalId));
 
-            if (value !== null && value !== undefined) {
-                if(mapping.type === mssql.Int) {
-                     value = parseInt(value, 10);
-                } else if (mapping.type === mssql.Float) {
-                    value = parseFloat(value);
-                }
-            }
-         request.input(spParamName, mapping.type, value);
-        }
+        // table/column come from config
+
+        const result= await request.query(`
+        SELECT TOP 1 ID, Estatus
+        FROM ${table} WHERE ${column} = @externalId AND Estatus <> 'CANCELADO'
+        ORDER BY ID DESC`
+        );
+
+        return result.recordset?.[0] || null;
+
     }
 
-    /**
-    Pushes a canonical Sales Order into Intelisis in two phases:
-    * 1) header via config.headerProcedure (returns the new Venta ID)
-    * 2) one call per line item via config.detailProcedure (VentaD)
-    * Mirrors ZohoAdapter.pushCanonical() to keep both destination
-    * adapters interchangeable under the same orchestration contract.
-    *
-    * @param {object} canonicalRecord - CDM object built by
-    *   ZohoAdapter.buildCanonicalFromZohoRecord()
-    * @param {object} config - a sync config (see SalesOrders.config.js)
-    */
+    
+/**
+ * Looks up an order previously imported from the CRM, using the
+ * external record ID stored in the column declared in config.idempotency.
+ * Runs inside the caller's transaction and locks the row so two
+ * simultaneous syncs of the same record cannot both insert it.
+ */
 
-    async pushCanonical(canonicalRecord, config){
+
+
+/**
+* Loads a set of SP parameters into an mssql request, coercing values
+* to the declared SQL type (reverse-lookup values arrive as strings).
+*/
+
+_bindParameters(request, source, spParameters){
+    for (const [spParamName, mapping] of Object.entries(spParameters)){
+        let value= source[mapping.canonical];
+
+        if (value !== null && value !== undefined) {
+            if(mapping.type === mssql.Int) {
+                value = parseInt(value, 10);
+            } else if (mapping.type === mssql.Float) {
+                value = parseFloat(value);
+            }
+        }
+        request.input(spParamName, mapping.type, value);
+    }
+}
+
+
+/**
+ Pushes a canonical Sales Order into Intelisis:
+ * Before pushing, checks whether the CRM record was already imported (idempotency)
+ * 1) header via config.headerProcedure (insert, or update if it already exists)
+ * 2) one call per line item via config.detailProcedure (VentaD)
+* Everything runs in a single transaction: if the header or any line
+* fails, nothing is saved.
+*
+* @param {object} canonicalRecord - CDM object built by
+*   ZohoAdapter.buildCanonicalFromZohoRecord()
+* @param {object} config - a sync config (see SalesOrders.config.js)
+*/
+
+async pushCanonical(canonicalRecord, config){
         this.pool= await getConnection();
         if(!this.pool){
             throw new Error('IntelisisAdapter: unable to connect to ERP database');
         }
 
+        
+        const transaction =  new mssql.Transaction(this.pool);
+
         try{
+            await transaction.begin();
+            // idempotency check
+
+            const existing= await this._findExistingOrder(transaction, canonicalRecord, config);
+
+            if (existing && !config.idempotency.editableStatuses.includes(String(existing.Estatus).trim())) {
+                await transaction.rollback();
+                return {
+                    syncedCount: 0, errorCount: 1, expectedCount: 1,
+                    error: `Order already exists in Intelisis (ID ${existing.ID}) with status ${existing.Estatus} and can no longer be modified.`,
+                };
+            }
             // --- Phase 1: header (Venta) ---
-            const headerRequest= this.pool.request();
+            const headerRequest= new mssql.Request(transaction);
+            if (existing) {
+                //  passing @ID makes the SP update the header and clear its previous lines
+                headerRequest.input('ID', mssql.Int, existing.ID);
+            }
+
             this._bindParameters(headerRequest, canonicalRecord, config.headerSpParameters); 
 
 
-            console.log(`Executing stored procedure: ${config.headerProcedure}`);
+            console.log(`${existing ? 'Updating' : 'Creating'} header via ${config.headerProcedure}`);
             const headerResult = await headerRequest.execute(config.headerProcedure);
 
             // pNetActualizarPedido returns a single row: ID, Ok, OkRef
@@ -90,7 +142,8 @@ class IntelisisAdapter {
 
 
             if (!headerOk || !headerRow?.ID) {
-            return { syncedCount: 0, errorCount: 1, expectedCount: 1, spResult: headerRow };
+                await transaction.rollback();
+                return { syncedCount: 0, errorCount: 1, expectedCount: 1, spResult: headerRow };
             }
 
             const orderId = headerRow.ID;
@@ -101,7 +154,7 @@ class IntelisisAdapter {
 
             const lineResults= [];
             for (const line of canonicalRecord.lineItems || []) {
-                const lineRequest= this.pool.request(); // a request cannot be reused after execute()
+                const lineRequest= new mssql.Request(transaction); 
                 lineRequest.input('ID', mssql.Int, orderId)  // links the line to the header just created
                 this._bindParameters(lineRequest, line, config.detailSpParameters);
 
@@ -113,20 +166,29 @@ class IntelisisAdapter {
 
                 const lineOk= lineRow?.Ok == null || lineRow?.Ok === 0;
                 console.log(`  Line ${line.itemCode}: ${lineOk ? 'OK' : `ERROR ${lineRow?.Ok} - ${lineRow?.OkRef}`}`);
+
+                if (!lineOk) {
+                    await transaction.rollback(); // one failed line undoes the header and every previous line
+                    return  {
+                        syncedCount: 0, errorCount: 1, expectedCount: 1,
+                        spResult: headerRow, lineResults,
+                        error: `Line ${line.itemCode} failed; the whole order was rolled back.`,
+                    };
+                }
             }
 
-            const failedLines = lineResults.filter(r => !(r.Ok == null || r.Ok === 0));
+            await transaction.commit(); // saves transaction until here 
 
 
             return{
-                syncedCount: failedLines.length === 0 ? 1 : 0,
-                errorCount:failedLines.length === 0 ? 0 : 1,
-                expectedCount: 1,
-                spResult: headerRow,
-                lineResults, 
+                syncedCount: 1, errorCount: 0, expectedCount: 1,
+                errorCount:existing ? 'update': 'insert',
+                spResult: headerRow, lineResults,
+                
             };
 
         } catch (error) {
+            try { await transaction.rollback(); } catch (_){/* already rolled back */}
             console.error(`IntelisisAdapter.pushCanonical failed for ${config.headerProcedure}:`, error.message);
             return{
                 syncedCount: 0,
