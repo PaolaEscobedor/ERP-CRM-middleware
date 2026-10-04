@@ -55,7 +55,7 @@ describe('Intelisis Adaptes Unit Tests ', () => {
 
          await expect(adapter.fetchCanonical(mockConfig))
          .rejects
-         .toThrow('Not able to connect pool with database');
+         .toThrow('IntelisisAdapter: unable to connect to ERP database');
 
         
     });

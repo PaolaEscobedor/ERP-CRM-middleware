@@ -76,6 +76,10 @@ _bindParameters(request, source, spParameters){
     for (const [spParamName, mapping] of Object.entries(spParameters)){
         let value= source[mapping.canonical];
 
+        // Send explicit NULL instead of "not supplied" so the SP's own
+        // validations (Ok/OkRef) report missing fields clearly.
+        if (value === undefined) value = null;
+
         if (value !== null && value !== undefined) {
             if(mapping.type === mssql.Int) {
                 value = parseInt(value, 10);
@@ -181,8 +185,10 @@ async pushCanonical(canonicalRecord, config){
 
 
             return{
-                syncedCount: 1, errorCount: 0, expectedCount: 1,
-                errorCount:existing ? 'update': 'insert',
+                syncedCount: 1, errorCount: 0, 
+                expectedCount: 1,
+                errorCount:0,
+                action: existing ? 'update': 'insert',
                 spResult: headerRow, lineResults,
                 
             };
