@@ -17,6 +17,8 @@ const ZohoAdapter = require('../adapters/ZohoAdapter');
 async function runSync(config, label= config.zohoModule) {
     console.log(`\n=== Starting sync: ${label} ===`);
 
+    // to test sync speed
+    const startedAt = Date.now();
     const intelisisAdapter = new IntelisisAdapter();
     const zohoAdapter = new ZohoAdapter();
 
@@ -33,7 +35,7 @@ async function runSync(config, label= config.zohoModule) {
         console.log('Loading records into Zoho CRM');
 
         const result = await zohoAdapter.pushCanonical(canonicalRecords, config);
-       console.log(`Sync completed: ${result.syncedCount}/${result.expectedCount} records synced, ${result.errorCount} errors in ${config.zohoModule}`);
+       console.log(`Sync completed: ${result.syncedCount}/${result.expectedCount} records synced, ${result.errorCount} errors in ${config.zohoModule} (${Date.now() - startedAt} ms)`);
         
         return result;
 

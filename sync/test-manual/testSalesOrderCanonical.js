@@ -2,7 +2,7 @@ const ZohoAdapter = require('../../adapters/ZohoAdapter');
 const IntelisisAdapter = require('../../adapters/IntelisisAdapter');
 const config = require('../../config/SalesOrders.config.js');
 
-const TEST_RECORD_ID = '7463151000000901025';
+const TEST_RECORD_ID = '7463151000001052008';
 
 async function testSingleOrderSync() {
     const zohoAdapter = new ZohoAdapter();

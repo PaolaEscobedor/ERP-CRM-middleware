@@ -123,7 +123,7 @@ describe('ZohoAdapter Unit Tests', () => {
     });
 
 
-    test('pushCanonical should chink records into batches of 100 when payload exceeds limit', async () => {
+    test('pushCanonical should chunk records into batches of 100 when payload exceeds limit', async () => {
         axios.get.mockResolvedValueOnce({
             data: {
                 data: [],
