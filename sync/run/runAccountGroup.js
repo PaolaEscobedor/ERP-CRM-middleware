@@ -1,6 +1,6 @@
 const { runSync } = require('../orchestrator.js');
 
-const config = require('../../config/AccountGroup.js');
+const config = require('../../config/AccountGroup.config.js');
 
 runSync(config, 'Account Group')
     .then(result => {
