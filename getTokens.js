@@ -1,42 +1,53 @@
 const axios = require('axios');
+require('dotenv').config();
 
-// 1. PEGA TUS CREDENCIALES DIRECTAMENTE AQUÍ (Sin usar process.env)
-const CLIENT_ID = '1000.LPIWSUAI8ZVFKB35J8VY13LZ3WIAPA';
-const CLIENT_SECRET = 'f2cb99177c6d05663f8d8491fc9b34c619717a109e';
-const REDIRECT_URI = 'http://localhost:3000/callback';
+/**
+ * One-off helper to exchange a Zoho grant code for a refresh token.
+ * Usage: node getTokens.js <grant_code>
+ *
+ * The grant code is generated in the Zoho API Console (Self Client) and is
+ * single-use and short-lived. Credentials are read from .env, never hardcoded.
+ */
 
-// 2. PEGA TU NUEVO CÓDIGO AQUÍ (El que saques del navegador)
-const GRANT_CODE = '1000.b2b1bd4a9f3a88891d7a07e556633a68.b3d25e27d4b235d23e60a7086f7d6312'; 
+const {
+    ZOHO_CLIENT_ID,
+    ZOHO_CLIENT_SECRET,
+    ZOHO_REDIRECT_URI = 'http://localhost:3000/callback',
+    ZOHO_ACCOUNTS_URL = 'https://accounts.zoho.com'
+} = process.env;
+
+// 2. Grant Code
+const grantCode = (process.argv[2] || process.env.ZOHO_GRANT_CODE || '').trim();
 
 async function initializeOAuth() {
-    try {
-        console.log('🚀 Solicitando tokens a Zoho (Modo Blindado)...');
-        
-        // 3. Forzamos el formato x-www-form-urlencoded que Zoho prefiere
+     if (!ZOHO_CLIENT_ID || !ZOHO_CLIENT_SECRET || !grantCode) {
+        console.error('Missing ZOHO_CLIENT_ID, ZOHO_CLIENT_SECRET or grant code.');
+        console.error('Usage: node getTokens.js <grant_code>');
+        process.exit(1);
+    }   
+     try {
+        console.log('Requesting tokens from Zoho...');
+
+        // Zoho expects x-www-form-urlencoded
         const payload = new URLSearchParams();
         payload.append('grant_type', 'authorization_code');
-        payload.append('client_id', CLIENT_ID.trim());
-        payload.append('client_secret', CLIENT_SECRET.trim());
-        payload.append('redirect_uri', REDIRECT_URI);
-        payload.append('code', GRANT_CODE.trim()); // Trim quita espacios invisibles
+        payload.append('client_id', ZOHO_CLIENT_ID.trim());
+        payload.append('client_secret', ZOHO_CLIENT_SECRET.trim());
+        payload.append('redirect_uri', ZOHO_REDIRECT_URI);
+        payload.append('code', grantCode);
 
-        const response = await axios.post('https://accounts.zoho.com/oauth/v2/token', payload);
+        const { data } = await axios.post(`${ZOHO_ACCOUNTS_URL}/oauth/v2/token`, payload);
 
-        console.log('\n================ RESPUESTA COMPLETA DE ZOHO ================');
-        console.log(response.data);
-        
-        if (response.data.refresh_token) {
-            console.log('\n===========================================================');
-            console.log(`✅ ¡ÉXITO! TU NUEVO REFRESH TOKEN ES:`);
-            console.log(response.data.refresh_token);
-            console.log('===========================================================\n');
-            console.log('👉 Ahora sí, cópialo y ponlo en tu archivo .env');
+        if (data.refresh_token) {
+            console.log('Refresh token obtained. Copy it into .env as ZOHO_REFRESH_TOKEN:');
+            console.log(data.refresh_token);
         } else {
-            console.log('⚠️ No se recibió refresh_token.');
+            // Do not print the full response: it contains the access token
+            console.log('No refresh_token received. Zoho replied with:', data.error || 'unknown response');
         }
-
     } catch (error) {
-        console.error('\n❌ ERROR:', error.response ? error.response.data : error.message);
+        console.error('Error:', error.response ? error.response.data : error.message);
+        process.exit(1);
     }
 }
 
