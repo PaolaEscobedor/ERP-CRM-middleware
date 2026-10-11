@@ -14,7 +14,7 @@ beforeEach(() => {
 
 describe('Orchestrator Integration Test', () => {
 
-    test('runSync should exctract canonical data and pass it to destination adapter, and close connection', async () => {
+    test('runSync should extract canonical data and pass it to destination adapter, and close connection', async () => {
         const mockCanonical = [{code: 'P001', name: 'Product A'}];
 
         IntelisisAdapter.prototype.fetchCanonical.mockResolvedValue(mockCanonical);

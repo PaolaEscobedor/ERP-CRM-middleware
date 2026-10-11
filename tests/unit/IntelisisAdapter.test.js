@@ -4,7 +4,7 @@ const { getConnection } = require('../../models/db');
 jest.mock('../../models/db');
 
 
-describe('Intelisis Adaptes Unit Tests ', () => {
+describe('Intelisis Adapter Unit Tests ', () => {
     let adapter;
 
     beforeEach(() => {
@@ -48,7 +48,7 @@ describe('Intelisis Adaptes Unit Tests ', () => {
     });
 
 
-    test('fetchCanonical should throw an error if datbase connection fails', async () => {
+    test('fetchCanonical should throw an error if database connection fails', async () => {
          getConnection.mockResolvedValue(null);
 
          const mockConfig = { sourceQuery: 'SELECT 1', sourceMap: {} };

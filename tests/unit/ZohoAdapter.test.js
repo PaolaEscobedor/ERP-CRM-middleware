@@ -40,7 +40,7 @@ describe('ZohoAdapter Unit Tests', () => {
     });
 
 
-    test('fetchMap shoul NOT discard records with falsy key value (0)', async () => {
+    test('fetchMap should NOT discard records with falsy key value (0)', async () => {
         axios.get.mockResolvedValueOnce({
             data: {
                 data: [{ id: 'z100', Codigo_ERP: 0 }],
