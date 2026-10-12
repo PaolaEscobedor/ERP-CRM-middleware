@@ -2,21 +2,16 @@
 
 Node.js middleware that synchronises data between a legacy ERP (Intelisis, Microsoft SQL Server) and a cloud CRM (Zoho CRM API v8). It uses the Adapter Pattern and a Canonical Data Model, and the field mappings are declared in configuration files instead of adapter code.
 
-Code for the MSc Computer Science project *Legacy System Modernization: A RESTful API Integration Between On- Premise ERP and Cloud CRM Systems* (University of London, Birkbeck), by Paola Escobedo Rojas.
+Code for the MSc Computer Science project *Legacy System Modernization: A RESTful API Integration Between On-Premise ERP and Cloud CRM Systems* (University of London, Birkbeck), by Paola Escobedo Rojas.
 
 > **Status:** academic prototype. It was developed and tested only against a Zoho CRM sandbox and an Intelisis test database, with small data volumes. It is not production-ready (see Limitations).
 
 ## Data flows
 
-| Flow | Direction                                                | How it runs                                      |
-|------|----------------------------------------------------------|--------------------------------------------------|
-| A    | Intelisis → Zoho (master data:                           |
-       |customers, products and reference catalogues; 19 modules) | One runner script per module in `sync/run/`      |
-| B    | Zoho → Intelisis (sales orders)                          | Authenticated REST 
-|      |                                                          | endpoint. Each order is written through the stored       
-       |                                                          |  procedures `pNetActualizarPedido` and                 
-       |                                                          |`pNetActualizarPedidoD` in a single transaction   |
-
+| Flow | Direction | How it runs |
+|------|-----------|-------------|
+| A | Intelisis → Zoho (master data: customers, products and reference catalogues; 19 modules) | One runner script per module in `sync/run/` |
+| B | Zoho → Intelisis (sales orders) | Authenticated REST endpoint. Each order is written through the stored procedures `pNetActualizarPedido` and `pNetActualizarPedidoD` in a single transaction |
 
 
 ## Project structure
@@ -88,12 +83,11 @@ npm run dev      # nodemon: restarts on file changes
 
 All paths are relative to `/api/v1`:
 
-| Method | Path            | Description                                                                                |
-|--------|-----------------|--------------------------------------------------------------------------------------------|
-| GET    | `/health`       | Liveness check (no authentication)                                                         |
-| POST   | `/auth/token`   | Issues a JWT. Send `grant_type=client_credentials`, `client_id` and `client_secret` as an  |   
-| POST   | `/sales-orders/ | Syncs one Zoho sales order. Requires `Authorization: Bearer <token>`. Returns 200 (written),| 
-|        |{recordId}/sync` | 401, 404 (record not found in Zoho), 422 (rejected by a business rule) or 500              |
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/health` | Liveness check (no authentication) |
+| POST | `/auth/token` | Issues a JWT. Send `grant_type=client_credentials`, `client_id` and `client_secret` as an `application/x-www-form-urlencoded` body |
+| POST | `/sales-orders/{recordId}/sync` | Syncs one Zoho sales order. Requires `Authorization: Bearer <token>`. Returns 200 (written), 401, 404 (record not found in Zoho), 422 (rejected by a business rule) or 500 |
 
 
 
